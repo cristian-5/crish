@@ -24,17 +24,21 @@ struct CompletionContext {
 	bool is_cmd;
 };
 
+bool is_separator(const string & lexeme) {
+	return lexeme == "|" || lexeme == ";" || lexeme == "&";
+}
+
 CompletionContext analyze_completion_context(const vector<Token> & tokens) {
 	CompletionContext ctx { "", true };
 	if (!tokens.empty() && !tokens.back().is_space) {
 		ctx.prefix = tokens.back().lexeme;
 		int idx = tokens.size() - 2;
 		while (idx >= 0 && tokens[idx].is_space) idx--;
-		if (idx >= 0 && tokens[idx].lexeme != "|") ctx.is_cmd = false;
+		if (idx >= 0 && !is_separator(tokens[idx].lexeme)) ctx.is_cmd = false;
 	} else {
 		int idx = tokens.size() - 1;
 		while (idx >= 0 && tokens[idx].is_space) idx--;
-		if (idx >= 0 && tokens[idx].lexeme != "|") ctx.is_cmd = false;
+		if (idx >= 0 && !is_separator(tokens[idx].lexeme)) ctx.is_cmd = false;
 	}
 	if (!ctx.prefix.empty() && (ctx.prefix.front() == '"' || ctx.prefix.front() == '\''))
 		ctx.prefix = ctx.prefix.substr(1);

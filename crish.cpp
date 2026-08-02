@@ -56,23 +56,18 @@ string highlight_syntax(const string &input) {
 	auto tokens = tokenize(input);
 	string res;
 	bool expect_cmd = true;
-	for (const auto &tok : tokens) {
-		if (tok.is_space) {
-			res += tok.lexeme;
+	for (const auto & token : tokens) {
+		if (token.is_space) {
+			res += token.lexeme;
 			continue;
 		}
-		string word = tok.lexeme;
-		if (word == "|" || word == "&" ||
-			word == ">>" || word == ">>>" ||
-			word == "<<" || word == "<<<") {
+		string word = token.lexeme;
+		if (isoperator(word)) {
 			res += word;
-			if (word == "|")
-				expect_cmd = true;
+			expect_cmd |= is_separator(word);
 		} else if (expect_cmd) {
-			if (is_executable_in_path(word))
-				res += fg(word, THEME_EXEC);
-			else
-				res += fg(word, THEME_FAILURE); // red if command doesn't exist
+			if (is_executable_in_path(word)) res += fg(word, THEME_EXEC);
+			else res += fg(word, THEME_FAILURE); // red if command doesn't exist
 			expect_cmd = false;
 		}
 		else if (word.size() > 1 && word[0] == '-' && (isalpha(word[1]) || word[1] == '-'))
@@ -114,17 +109,18 @@ string read_input_raw(const string & duration_note, History & history) {
 	enable_raw_mode();
 	string buffer;
 	char c;
-	history.reset(); // fresh navigation state for this line
+	history.reset();
 	redraw_prompt(duration_note);
 	redraw_line(buffer);
-	while (read(STDIN_FILENO, &c, 1) == 1) {
+	ssize_t n;
+	while ((n = read(STDIN_FILENO, & c, 1)) == 1) {
 		if (c == '\n') {
 			cout << "\n";
 			break;
-		} else if (c == 127 || c == 8) { // backspace or DEL
+		} else if (c == 127 || c == 8) {
 			if (!buffer.empty()) buffer.pop_back();
 			history.reset();
-		} else if (c == 27) { // ESC — possible arrow key sequence
+		} else if (c == 27) {
 			char seq0, seq1;
 			if (read(STDIN_FILENO, &seq0, 1) != 1 || seq0 != '[') continue;
 			if (read(STDIN_FILENO, &seq1, 1) != 1) continue;
@@ -139,6 +135,10 @@ string read_input_raw(const string & duration_note, History & history) {
 		redraw_line(buffer);
 	}
 	disable_raw_mode();
+	if (n <= 0) { // EOF (Ctrl+D, or piped stdin ran out)
+		cout << endl;
+		exit(EXIT_SUCCESS);
+	}
 	return buffer;
 }
 
@@ -149,6 +149,11 @@ struct ParsedCommand {
 	string out_file;	// >> file
 	string err_file;	// >>> file
 };
+
+bool is_builtin(const vector<string> & args) {
+	if (args.empty()) return true;
+	return args[0] == "cd" || args[0] == "sleep" || args[0] == "clean" || args[0] == "clear";
+}
 
 bool handle_builtin(const vector<string> & args) {
 	if (args.empty()) return true;
@@ -173,8 +178,7 @@ bool handle_builtin(const vector<string> & args) {
 	return false;
 }
 
-void execute_pipeline(const string & input) {
-	auto tokens = tokenize(input);
+void execute_pipeline(const vector<Token> & tokens) {
 	if (tokens.empty()) return;
 	vector<ParsedCommand> cmds(1);
 	bool background = false;
@@ -203,7 +207,18 @@ void execute_pipeline(const string & input) {
 		}
 	}
 	if (cmds[0].args.empty()) return;
-	if (cmds.size() == 1 && handle_builtin(cmds[0].args)) return;
+	if (cmds.size() == 1 && is_builtin(cmds[0].args)) {
+		if (background) {
+			pid_t pid = fork();
+			if (pid == 0) {
+				handle_builtin(cmds[0].args);
+				exit(EXIT_SUCCESS);
+			}
+			return;
+		}
+		handle_builtin(cmds[0].args);
+		return;
+	}
 	int num_cmds = cmds.size(), num_pipes = max(0, num_cmds - 1);
 	vector<int> pipefds(2 * num_pipes); 
 	for (int i = 0; i < num_pipes; i++) pipe(pipefds.data() + i * 2);
@@ -250,6 +265,18 @@ void execute_pipeline(const string & input) {
 		for (pid_t pid : pids) waitpid(pid, nullptr, 0);
 }
 
+void execute_line(const string & input) {
+	auto tokens = tokenize(input);
+	if (tokens.empty()) return;
+	vector<Token> segment;
+	for (const auto & token : tokens)
+		if (!token.is_space && token.lexeme == ";") {
+			execute_pipeline(segment);
+			segment.clear();
+		} else segment.push_back(token);
+	execute_pipeline(segment); // final segment, no trailing ';'
+}
+
 int main(int argc, char * argv[]) {
 	if (argc > 1) {
 		string cmd;
@@ -267,7 +294,7 @@ int main(int argc, char * argv[]) {
 		history.add(input);
 		if (input == "exit") break;
 		auto start = chrono::steady_clock::now();
-		execute_pipeline(input);
+		execute_line(input);
 		auto end = chrono::steady_clock::now();
 		auto secs = chrono::duration_cast<chrono::seconds>(end - start).count();
 		duration_note = (secs >= 1) ? format_duration(secs) : "";
