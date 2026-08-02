@@ -91,7 +91,15 @@ void redraw_prompt(const string & duration_note) {
 	struct passwd * pw = getpwuid(geteuid());
 	string username = get_username(pw), cwd = get_formatted_cwd(pw);
 	string os = get_os_version_string();
-	cout << " " << fg(time, THEME_TIME, BOLD)
+	string logo;
+	#if defined(__APPLE__)
+		logo = "";
+	#elif defined(__linux__)
+		logo = "✤";
+	#elif defined(_WIN32)
+		logo = "❖";
+	#endif
+	cout << logo << " " << fg(time, THEME_TIME, BOLD)
 		 << " with " << fg(username, THEME_USER, BOLD)
 		 << " in " << fg(cwd, THEME_CWD, BOLD)
 		 << " on " << fg(os, THEME_DEVICE, BOLD);
@@ -168,6 +176,7 @@ string read_input_raw(const string & duration_note, History & history) {
 	}
 	return buffer;
 }
+
 struct ParsedCommand {
 	vector<string> args;
 	string in_file;		// << file
