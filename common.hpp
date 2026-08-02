@@ -14,6 +14,10 @@ using std::string;
 
 namespace fs = std::filesystem;
 
+void ring_bell() {
+	std::cout << '\a' << std::flush;
+}
+
 string itoa(int64_t value) {
 	if (value == 0) return "0";
 	bool is_negative = value < 0;

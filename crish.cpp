@@ -13,6 +13,7 @@
 #include "color.hpp"
 #include "common.hpp"
 #include "lexer.hpp"
+#include "history.hpp"
 #include "completion.hpp"
 
 using namespace std;
@@ -109,10 +110,11 @@ void redraw_line(const string & args) {
 	cout << "\r\033[K" << fg("% ", THEME_SUCCESS) << highlight_syntax(args) << flush;
 }
 
-string read_input_raw(const string & duration_note) {
+string read_input_raw(const string & duration_note, History & history) {
 	enable_raw_mode();
 	string buffer;
 	char c;
+	history.reset(); // fresh navigation state for this line
 	redraw_prompt(duration_note);
 	redraw_line(buffer);
 	while (read(STDIN_FILENO, &c, 1) == 1) {
@@ -121,9 +123,19 @@ string read_input_raw(const string & duration_note) {
 			break;
 		} else if (c == 127 || c == 8) { // backspace or DEL
 			if (!buffer.empty()) buffer.pop_back();
+			history.reset();
+		} else if (c == 27) { // ESC — possible arrow key sequence
+			char seq0, seq1;
+			if (read(STDIN_FILENO, &seq0, 1) != 1 || seq0 != '[') continue;
+			if (read(STDIN_FILENO, &seq1, 1) != 1) continue;
+			if (seq1 == 'A') history.up(buffer);
+			else if (seq1 == 'B') history.down(buffer);
 		}
 		else if (c == '\t') handle_tab_completion(buffer);
-		else if (c >= 32 && c <= 126) buffer += c;
+		else if (c >= 32 && c <= 126) {
+			buffer += c;
+			history.reset();
+		}
 		redraw_line(buffer);
 	}
 	disable_raw_mode();
@@ -248,9 +260,11 @@ int main(int argc, char * argv[]) {
 		system(cmd.c_str());
 		return EXIT_SUCCESS;
 	}
+	History history;
 	string duration_note;
 	while (true) {
-		string input = read_input_raw(duration_note);
+		string input = read_input_raw(duration_note, history);
+		history.add(input);
 		if (input == "exit") break;
 		auto start = chrono::steady_clock::now();
 		execute_pipeline(input);
