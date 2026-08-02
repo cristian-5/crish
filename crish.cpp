@@ -100,48 +100,74 @@ void redraw_prompt(const string & duration_note) {
 	cout << endl;
 }
 
-void redraw_line(const string & args) {
+void redraw_line(const string & buffer, size_t cursor) {
 	// \r moves cursor to column 0; \033[K clears the line from cursor onwards
-	cout << "\r\033[K" << fg("% ", THEME_SUCCESS) << highlight_syntax(args) << flush;
+	cout << "\r\033[K" << fg("% ", THEME_SUCCESS) << highlight_syntax(buffer);
+	size_t back = buffer.size() - cursor;
+	if (back > 0) cout << "\033[" << back << "D"; // move cursor left `back` columns
+	cout << flush;
 }
 
 string read_input_raw(const string & duration_note, History & history) {
 	enable_raw_mode();
 	string buffer;
+	size_t cursor = 0;
 	char c;
 	history.reset();
 	redraw_prompt(duration_note);
-	redraw_line(buffer);
+	redraw_line(buffer, cursor);
 	ssize_t n;
-	while ((n = read(STDIN_FILENO, & c, 1)) == 1) {
+	while ((n = read(STDIN_FILENO, &c, 1)) == 1) {
 		if (c == '\n') {
 			cout << "\n";
 			break;
-		} else if (c == 127 || c == 8) {
-			if (!buffer.empty()) buffer.pop_back();
+		} else if (c == 127 || c == 8) { // backspace or DEL
+			if (cursor > 0) {
+				buffer.erase(buffer.begin() + cursor - 1);
+				cursor--;
+			}
 			history.reset();
-		} else if (c == 27) {
+		} else if (c == 27) { // ESC — possible escape sequence
 			char seq0, seq1;
 			if (read(STDIN_FILENO, &seq0, 1) != 1 || seq0 != '[') continue;
 			if (read(STDIN_FILENO, &seq1, 1) != 1) continue;
-			if (seq1 == 'A') history.up(buffer);
-			else if (seq1 == 'B') history.down(buffer);
-		}
-		else if (c == '\t') handle_tab_completion(buffer);
-		else if (c >= 32 && c <= 126) {
-			buffer += c;
+			if      (seq1 == 'A') { history.up(buffer);   cursor = buffer.size(); }
+			else if (seq1 == 'B') { history.down(buffer); cursor = buffer.size(); }
+			else if (seq1 == 'C') { if (cursor < buffer.size()) cursor++; }
+			else if (seq1 == 'D') { if (cursor > 0) cursor--; }
+			else if (isdigit(seq1)) {
+				// Extended sequence: ESC [ <digits> [;<digits>] ~ — drain fully so no
+				// stray byte (e.g. the trailing '~') leaks into the buffer as text.
+				string code(1, seq1);
+				bool code_done = false;
+				char next;
+				while (read(STDIN_FILENO, &next, 1) == 1) {
+					if (next == '~') break;
+					if (next == ';') { code_done = true; continue; } // modifier follows
+					if (isdigit(next)) { if (!code_done) code += next; continue; }
+					break; // unexpected byte — bail defensively
+				}
+				if (code == "3" && cursor < buffer.size()) // Delete key: forward-delete
+					buffer.erase(buffer.begin() + cursor);
+				// other codes (Home/End/PageUp/PageDown, etc.) intentionally no-ops for now
+			}
+		} else if (c == '\t') {
+			handle_tab_completion(buffer);
+			cursor = buffer.size();
+		} else if (c >= 32 && c <= 126) {
+			buffer.insert(buffer.begin() + cursor, c);
+			cursor++;
 			history.reset();
 		}
-		redraw_line(buffer);
+		redraw_line(buffer, cursor);
 	}
 	disable_raw_mode();
-	if (n <= 0) { // EOF (Ctrl+D, or piped stdin ran out)
+	if (n <= 0) {
 		cout << endl;
 		exit(EXIT_SUCCESS);
 	}
 	return buffer;
 }
-
 struct ParsedCommand {
 	vector<string> args;
 	string in_file;		// << file
