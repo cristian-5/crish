@@ -323,6 +323,7 @@ int main(int argc, char * argv[]) {
 		return EXIT_SUCCESS;
 	}
 	History history;
+	history.load(expand_tilde("~/.crish_history"));
 	string duration_note;
 	while (true) {
 		string input = read_input_raw(duration_note, history);

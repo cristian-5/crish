@@ -3,21 +3,39 @@
 #define HISTORY_HPP
 
 #include <iostream>
+#include <fstream>
 #include <string>
 #include <vector>
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/file.h> // flock
 
 #include "common.hpp"
 
 using std::vector;
 using std::string;
 using std::cout;
+using std::ifstream;
 
 class History {
 public:
 
+	/// Loads existing entries from disk and remembers the
+	/// path so future `add()` calls persist immediately.
+	void load(const string & path) {
+		file_path = path;
+		ifstream in(path);
+		if (!in) return;
+		string line;
+		while (getline(in, line))
+			if (!line.empty()) entries.push_back(line);
+	}
+
 	void add(const string & entry) {
-		if (!entry.empty() && (entries.empty() || entries.back() != entry))
-			entries.push_back(entry);
+		if (entry.empty()) return;
+		if (!entries.empty() && entries.back() == entry) return; // skip consecutive dupes
+		entries.push_back(entry);
+		append_to_file(entry);
 	}
 
 	void reset() {
@@ -56,6 +74,24 @@ public:
 
 private:
 
+	// Opens with O_APPEND (kernel guarantees the write always lands at
+	// end-of-file, even with other processes appending concurrently) and
+	// wraps the write in flock as a second layer of safety, so two crish
+	// instances writing at the same instant can't interleave or clobber
+	// each other's line.
+	void append_to_file(const string & entry) {
+		if (file_path.empty()) return;
+		int fd = open(file_path.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0600);
+		if (fd == -1) return;
+		if (flock(fd, LOCK_EX) == 0) {
+			string line = entry + "\n";
+			write(fd, line.c_str(), line.size());
+			flock(fd, LOCK_UN);
+		}
+		close(fd);
+	}
+
+	string file_path;
 	vector<string> entries;
 	vector<int> filtered; // indices into entries, oldest -> newest, matching `prefix`
 	int pos = -1;         // -1 means "not navigating"
