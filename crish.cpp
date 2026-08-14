@@ -52,6 +52,19 @@ bool is_executable_in_path(const string & cmd) {
 	return false;
 }
 
+bool is_builtin(const vector<string> & args) {
+	if (args.empty()) return true;
+	return args[0] == "cd" || args[0] == "sleep" || args[0] == "clean" || args[0] == "clear";
+}
+
+bool is_builtin(const string & cmd) {
+	return cmd == "cd" || cmd == "sleep" || cmd == "clean" || cmd == "clear";
+}
+
+bool is_command_valid(const string & cmd) {
+	return is_builtin(cmd) || is_executable_in_path(cmd);
+}
+
 string highlight_syntax(const string &input) {
 	auto tokens = tokenize(input);
 	string res;
@@ -66,7 +79,7 @@ string highlight_syntax(const string &input) {
 			res += word;
 			expect_cmd |= is_separator(word);
 		} else if (expect_cmd) {
-			if (is_executable_in_path(word)) res += fg(word, THEME_EXEC);
+			if (is_command_valid(word)) res += fg(word, THEME_EXEC);
 			else res += fg(word, THEME_FAILURE); // red if command doesn't exist
 			expect_cmd = false;
 		}
@@ -185,11 +198,6 @@ struct ParsedCommand {
 	string err_file;	// >>> file
 };
 
-bool is_builtin(const vector<string> & args) {
-	if (args.empty()) return true;
-	return args[0] == "cd" || args[0] == "sleep" || args[0] == "clean" || args[0] == "clear";
-}
-
 bool handle_builtin(const vector<string> & args) {
 	if (args.empty()) return true;
 	if (args[0] == "cd") {
@@ -207,7 +215,7 @@ bool handle_builtin(const vector<string> & args) {
 		}
 		return true;
 	} else if (args[0] == "clean" || args[0] == "clear") {
-		cout << "\033[3J" << flush;
+		cout << "\033[2J\033[H\033[3J" << flush;
 		return true;
 	}
 	return false;
@@ -313,10 +321,13 @@ void execute_line(const string & input) {
 }
 
 int main(int argc, char * argv[]) {
+	load_path_file();
 	if (argc > 1) {
+		int start = 1;
+		if (string(argv[1]) == "-c" && argc > 2) start = 2;
 		string cmd;
-		for (int i = 1; i < argc; ++i) {
-			if (i > 1) cmd.push_back(' ');
+		for (int i = start; i < argc; ++i) {
+			if (i > start) cmd.push_back(' ');
 			cmd += argv[i];
 		}
 		system(cmd.c_str());
