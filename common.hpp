@@ -9,8 +9,8 @@
 #include <termios.h>
 #include <unistd.h>
 #include <pwd.h>
+#include <sys/stat.h>
 #include <sys/utsname.h>
-#include <system_error>
 
 using std::string;
 
@@ -31,6 +31,17 @@ string itoa(int64_t value) {
 		value /= 10;
 	}
 	if (is_negative) result.insert(result.begin(), '-');
+	return result;
+}
+
+uint64_t hex2i(const string & hex) {
+	uint64_t result = 0;
+	for (char c : hex) {
+		result <<= 4;
+		if (c >= '0' && c <= '9') result += c - '0';
+		else if (c >= 'a' && c <= 'f') result += 10 + (c - 'a');
+		else if (c >= 'A' && c <= 'F') result += 10 + (c - 'A');
+	}
 	return result;
 }
 
@@ -116,25 +127,19 @@ string format_duration(uint64_t total_seconds) {
 	} else return itoa(s) + "s";
 }
 
-void load_path_file() {
-	string path_file = expand_tilde("~/.path");
-	std::ifstream in(path_file);
-	if (!in) return; // no file — leave PATH exactly as the OS set it
-	string line, joined;
-	while (getline(in, line)) {
-		// trim trailing \r in case the file has CRLF line endings
-		if (!line.empty() && line.back() == '\r') line.pop_back();
-		if (line.empty() || line[0] == '#') continue;
-		string dir = expand_tilde(line);
-		std::error_code ec;
-		if (!fs::is_directory(dir, ec) || ec) continue; // skip typos / missing directories
-		if (!joined.empty()) joined += ":";
-		joined += dir;
-	}
-	if (joined.empty()) return;
-	const char * existing = getenv("PATH");
-	string new_path = existing ? joined + ":" + existing : joined;
-	setenv("PATH", new_path.c_str(), 1);
+bool has_hidden_flag(const fs::path & p) {
+	struct stat st;
+	if (stat(p.c_str(), &st) != 0) return false;
+#ifdef UF_HIDDEN
+	return (st.st_flags & UF_HIDDEN) != 0;
+#else
+	return false; // not macOS / BSD — this flag doesn't exist
+#endif
+}
+
+void replace(std::string& str, const std::string& from, const std::string& to) {
+    size_t pos = str.find(from);
+    if (pos != std::string::npos) str.replace(pos, from.length(), to);
 }
 
 #endif

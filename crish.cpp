@@ -10,31 +10,15 @@
 #include <cstdlib>
 #include <algorithm>
 
-#include "color.hpp"
+#include "theme.hpp"
 #include "common.hpp"
 #include "lexer.hpp"
 #include "history.hpp"
+#include "settings.hpp"
 #include "completion.hpp"
 
 using namespace std;
 namespace fs = filesystem;
-
-enum Theme : uint32_t {
-	THEME_FAILURE  = 0xFF0000, // red
-	THEME_SUCCESS  = 0x00FF00, // green
-	THEME_TIME     = 0xfe5f00, // orange
-	THEME_INTERVAL = 0xf5f543, // yellow
-	THEME_USER     = 0xfe5fd7, // pink
-	THEME_CWD      = 0x36f6f7, // cyan
-	THEME_DEVICE   = 0x1893ff, // blue
-	THEME_COMMAND  = 0xFFFFFF, // white
-	THEME_OPTION   = 0xFFFF00, // yellow
-	THEME_NUMBER   = 0x00FFFF, // cyan
-	THEME_STRING   = 0x0aad98, // aqua
-	THEME_FILE     = 0xc966c9, // pink
-	THEME_EXEC     = 0x00FF00, // green
-	THEME_ERROR    = 0xFF0000  // red
-};
 
 bool is_executable_in_path(const string & cmd) {
 	string resolved = expand_tilde(cmd);
@@ -52,13 +36,20 @@ bool is_executable_in_path(const string & cmd) {
 	return false;
 }
 
+string BUILTIN[] = { "cd", "la", "ls", "sleep", "clean", "clear" };
+const size_t N_BUILTINS = sizeof(BUILTIN) / sizeof(BUILTIN[0]);
+
 bool is_builtin(const vector<string> & args) {
 	if (args.empty()) return true;
-	return args[0] == "cd" || args[0] == "sleep" || args[0] == "clean" || args[0] == "clear";
+	for (int i = 0; i < N_BUILTINS; ++i)
+		if (args[0] == BUILTIN[i]) return true;
+	return false;
 }
 
 bool is_builtin(const string & cmd) {
-	return cmd == "cd" || cmd == "sleep" || cmd == "clean" || cmd == "clear";
+	for (int i = 0; i < N_BUILTINS; ++i)
+		if (cmd == BUILTIN[i]) return true;
+	return false;
 }
 
 bool is_command_valid(const string & cmd) {
@@ -79,51 +70,48 @@ string highlight_syntax(const string &input) {
 			res += word;
 			expect_cmd |= is_separator(word);
 		} else if (expect_cmd) {
-			if (is_command_valid(word)) res += fg(word, THEME_EXEC);
-			else res += fg(word, THEME_FAILURE); // red if command doesn't exist
+			if (is_command_valid(word)) res += themed(word, "success");
+			else res += themed(word, "failure"); // red if command doesn't exist
 			expect_cmd = false;
 		}
 		else if (word.size() > 1 && word[0] == '-' && (isalpha(word[1]) || word[1] == '-'))
-			res += fg(word, THEME_OPTION);
+			res += themed(word, "arguments");
 		else if ((word.size() > 1 && word[0] == '-' && isdigit(word[1])) || isdigit(word[0]))
-			res += fg(word, THEME_NUMBER);
-		else if (word[0] == '"' || word[0] == '\'') res += fg(word, THEME_STRING);
-		else if (fs::exists(expand_tilde(word))) res += fg(word, THEME_FILE);
-		else res += fg(word, THEME_COMMAND); // subcommands
+			res += themed(word, "numbers");
+		else if (word[0] == '"' || word[0] == '\'') res += themed(word, "strings");
+		else if (fs::exists(expand_tilde(word))) res += themed(word, "paths");
+		else res += word; // subcommands
 	}
 	return res;
 }
 
 void redraw_prompt(const string & duration_note) {
-	auto now = chrono::system_clock::now();
-	time_t now_c = chrono::system_clock::to_time_t(now);
-	tm local_tm = * localtime(& now_c);
-	char buffer[10]; // HH:MM:SS\0 (8 chars + null terminator)
-	strftime(buffer, sizeof(buffer), "%H:%M:%S", & local_tm);
-	string time(buffer);
-	struct passwd * pw = getpwuid(geteuid());
-	string username = get_username(pw), cwd = get_formatted_cwd(pw);
-	string os = get_os_version_string();
-	string logo;
-	#if defined(__APPLE__)
-		logo = "";
-	#elif defined(__linux__)
-		logo = "✤";
-	#elif defined(_WIN32)
-		logo = "❖";
-	#endif
-	cout << logo << " " << fg(time, THEME_TIME, BOLD)
-		 << " with " << fg(username, THEME_USER, BOLD)
-		 << " in " << fg(cwd, THEME_CWD, BOLD)
-		 << " on " << fg(os, THEME_DEVICE, BOLD);
-	if (!duration_note.empty())
-		cout << " took " << fg(duration_note, THEME_INTERVAL, BOLD);
+	bool first = true;
+	for (const auto & node : prompt_nodes) {
+		string text;
+		if (!first) text += " ";
+		first = false;
+		prompt_info_t info;
+		auto now = std::chrono::system_clock::now();
+		std::time_t current_time = std::chrono::system_clock::to_time_t(now);
+		std::tm * local_time = std::localtime(& current_time);
+		info.hh = local_time -> tm_hour;
+		info.mm = local_time -> tm_min;
+		info.ss = std::min(59, local_time -> tm_sec); // can be 60
+		struct passwd * pw = getpwuid(geteuid());
+		info.user = get_username(pw);
+		info.cwd = get_formatted_cwd(pw);
+		info.kernel = get_os_version_string();
+		info.duration = duration_note; // took 3s
+		text += node.compute(info);
+		cout << themed(text, node.theme);
+	}
 	cout << endl;
 }
 
 void redraw_line(const string & buffer, size_t cursor) {
 	// \r moves cursor to column 0; \033[K clears the line from cursor onwards
-	cout << "\r\033[K" << fg("% ", THEME_SUCCESS) << highlight_syntax(buffer);
+	cout << "\r\033[K" << themed("% ", "prompt") << highlight_syntax(buffer);
 	size_t back = buffer.size() - cursor;
 	if (back > 0) cout << "\033[" << back << "D"; // move cursor left `back` columns
 	cout << flush;
@@ -198,24 +186,66 @@ struct ParsedCommand {
 	string err_file;	// >>> file
 };
 
+void list_directory(const string & path, bool show_hidden) {
+	error_code ec;
+	if (!fs::is_directory(path, ec) || ec) {
+		cerr << themed("ls: not a directory: " + path, "failure") << endl;
+		return;
+	}
+	vector<fs::directory_entry> dirs, files;
+	fs::directory_iterator it(path, fs::directory_options::skip_permission_denied, ec);
+	if (ec) { cerr << themed("ls: cannot open " + path, "failure") << endl; return; }
+	for (; it != fs::directory_iterator(); it.increment(ec)) {
+		if (ec) break;
+		string name = it -> path().filename().string();
+		bool hidden = (!name.empty() && name[0] == '.') || has_hidden_flag(it -> path());
+		if (hidden && !show_hidden) continue;
+		error_code stat_ec;
+		bool is_dir = it -> is_directory(stat_ec);
+		if (stat_ec) continue; // broken symlink etc — skip just this entry
+		if (is_dir) dirs.push_back(*it);
+		else files.push_back(*it);
+	}
+	auto by_name = [](const fs::directory_entry & a, const fs::directory_entry & b) {
+		return a.path().filename().string() < b.path().filename().string();
+	};
+	sort(dirs.begin(), dirs.end(), by_name);
+	sort(files.begin(), files.end(), by_name);
+	for (auto & e : dirs) {
+		string name = e.path().filename().string();
+		bool hidden = (!name.empty() && name[0] == '.') || has_hidden_flag(e.path());
+		cout << themed(name, hidden ? "hidden-folders" : "folders") << "\n";
+	}
+	for (auto & e : files) {
+		string name = e.path().filename().string();
+		bool hidden = (!name.empty() && name[0] == '.') || has_hidden_flag(e.path());
+		cout << themed(name, hidden ? "hidden-files" : "files") << "\n";
+	}
+}
+
 bool handle_builtin(const vector<string> & args) {
 	if (args.empty()) return true;
 	if (args[0] == "cd") {
-		if (args.size() < 2) cerr << fg("cd: missing argument", THEME_ERROR) << endl;
+		if (args.size() < 2) cerr << themed("cd: missing argument", "failure") << endl;
 		else if (chdir(expand_tilde(args[1]).c_str()) != 0) perror("cd failed");
 		return true;
 	} else if (args[0] == "sleep") {
-		if (args.size() < 2) cerr << fg("sleep: missing argument", THEME_ERROR) << endl;
+		if (args.size() < 2) cerr << themed("sleep: missing argument", "failure") << endl;
 		else try {
 			double seconds = stod(args[1]);
 			if (seconds > 0)
 				this_thread::sleep_for(chrono::duration<double>(seconds));
 		} catch (...) {
-			cerr << fg("sleep: invalid argument", THEME_ERROR) << endl;
+			cerr << themed("sleep: invalid argument", "failure") << endl;
 		}
 		return true;
 	} else if (args[0] == "clean" || args[0] == "clear") {
 		cout << "\033[2J\033[H\033[3J" << flush;
+		return true;
+	} else if (args[0] == "ls" || args[0] == "la") {
+		bool show_hidden = (args[0] == "la");
+		string target = args.size() > 1 ? expand_tilde(args[1]) : ".";
+		list_directory(target, show_hidden);
 		return true;
 	}
 	return false;
@@ -298,7 +328,7 @@ void execute_pipeline(const vector<Token> & tokens) {
 			for (auto & arg : cmds[i].args) c_args.push_back(const_cast<char *>(arg.c_str()));
 			c_args.push_back(nullptr);
 			execvp(c_args[0], c_args.data());
-			perror(fg("Execution failed", THEME_ERROR).c_str());
+			perror(themed("Execution failed", "failure").c_str());
 			exit(EXIT_FAILURE);
 		}
 		pids.push_back(pid);
@@ -321,7 +351,7 @@ void execute_line(const string & input) {
 }
 
 int main(int argc, char * argv[]) {
-	load_path_file();
+	load_settings(expand_tilde("~/crish.json")); // loads "path" and "theme"
 	if (argc > 1) {
 		int start = 1;
 		if (string(argv[1]) == "-c" && argc > 2) start = 2;
