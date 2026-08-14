@@ -1,7 +1,9 @@
 
 # crish shell
 
-Custom shell made with ❤️ and syntax highlighting.
+Custom **macOS** shell made with ❤️ syntax highlighting and tab completion.
+
+> If you want me to add a specific feature raise an issue.
 
 It supports:
 
@@ -12,8 +14,8 @@ It supports:
 - Syntax highlighting
 - History navigation with UP and DOWN arrows
 - History persistence into `~/.crish_history`
-- Path editing via `.json` configuration file
-- Custom prompt via `.json` configuration file
+- Path editing via `~/.crish.json` configuration file
+- Custom prompt via `~/.crish.json` configuration file
 
 ### Compilation
 
@@ -78,6 +80,4 @@ Create a `crish.json` file in your home directory (it can also be marked hidden)
 		"/usr/sbin"
 	]
 }
-
 ```
-
