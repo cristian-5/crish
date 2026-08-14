@@ -38,6 +38,7 @@ you can silence it by running `touch ~/.hushlogin`.
 ## Configuration
 
 Create a `crish.json` file in your home directory (it can also be marked hidden).
+> `"symlinks"` and `"executables"` haven't been implemented yet.
 
 ```json
 
@@ -49,7 +50,6 @@ Create a `crish.json` file in your home directory (it can also be marked hidden)
 		"strings": { "fg": "#0aad98" },
 		"numbers": { "fg": "#00ffff" },
 		"arguments": { "fg": "#ffff00" },
-		"subcommands": { "fg": "#fff" },
 		"paths": { "fg": "#c966c9" },
 		"files": { "fg": "#fff" },
 		"folders": { "fg": "#fff", "bg": "#0085db" },
