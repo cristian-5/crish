@@ -328,7 +328,7 @@ void execute_pipeline(const vector<Token> & tokens) {
 			for (auto & arg : cmds[i].args) c_args.push_back(const_cast<char *>(arg.c_str()));
 			c_args.push_back(nullptr);
 			execvp(c_args[0], c_args.data());
-			perror(themed("Execution failed", "failure").c_str());
+			perror(themed("execution failed", "failure").c_str());
 			exit(EXIT_FAILURE);
 		}
 		pids.push_back(pid);
@@ -353,15 +353,28 @@ void execute_line(const string & input) {
 int main(int argc, char * argv[]) {
 	load_settings(expand_tilde("~/crish.json")); // loads "path" and "theme"
 	if (argc > 1) {
-		int start = 1;
-		if (string(argv[1]) == "-c" && argc > 2) start = 2;
-		string cmd;
-		for (int i = start; i < argc; ++i) {
-			if (i > start) cmd.push_back(' ');
-			cmd += argv[i];
+		if (string(argv[1]) == "-c" && argc > 2) {
+			string cmd;
+			for (int i = 2; i < argc; ++i) {
+				if (i > 2) cmd.push_back(' ');
+				cmd += argv[i];
+			}
+			execute_line(cmd);
+			return EXIT_SUCCESS;
+		} else { // script file passed as argument:
+			ifstream script(argv[1]);
+			if (!script.is_open()) {
+				cerr << "crish: could not open script file \"" << argv[1] << "\"" << endl;
+				cerr << "reason: " << strerror(errno) << endl;
+				return EXIT_SUCCESS;
+			}
+			string line;
+			while (getline(script, line)) {
+				if (line.empty() || line[0] == '#') continue;
+				execute_line(line);
+			}
+			return EXIT_SUCCESS;
 		}
-		system(cmd.c_str());
-		return EXIT_SUCCESS;
 	}
 	History history;
 	history.load(expand_tilde("~/.crish_history"));
