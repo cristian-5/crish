@@ -79,7 +79,8 @@ SearchAnchor resolve_search_anchor(const string &prefix) {
 		size_t slash = prefix.find('/');
 		string user_part = (slash == string::npos) ? prefix : prefix.substr(0, slash);
 		string expanded = expand_tilde(user_part);
-		if (fs::exists(expanded)) {
+		error_code ec;
+		if (fs::exists(expanded, ec) && !ec) {
 			string rest = (slash == string::npos) ? "" : prefix.substr(slash + 1);
 			return { fs::path(expanded), rest, user_part + "/" };
 		}

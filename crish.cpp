@@ -22,16 +22,24 @@ namespace fs = filesystem;
 
 bool is_executable_in_path(const string & cmd) {
 	string resolved = expand_tilde(cmd);
-	if (resolved.find('/') != string::npos)
-		return fs::exists(resolved) && (fs::status(resolved).permissions() & fs::perms::owner_exec) != fs::perms::none;
+	error_code ec;
+	if (resolved.find('/') != string::npos) {
+		bool exists = fs::exists(resolved, ec);
+		if (ec || !exists) return false;
+		auto perms = fs::status(resolved, ec).permissions();
+		return !ec && (perms & fs::perms::owner_exec) != fs::perms::none;
+	}
 	const char * path_env = getenv("PATH");
 	if (!path_env) return false;
 	stringstream ss(path_env);
 	string dir;
 	while (getline(ss, dir, ':')) {
 		string full_path = dir + "/" + cmd;
-		if (fs::exists(full_path) && (fs::status(full_path).permissions() & fs::perms::owner_exec) != fs::perms::none)
-			return true;
+		error_code ec2;
+		bool exists = fs::exists(full_path, ec2);
+		if (ec2 || !exists) continue;
+		auto perms = fs::status(full_path, ec2).permissions();
+		if (!ec2 && (perms & fs::perms::owner_exec) != fs::perms::none) return true;
 	}
 	return false;
 }
@@ -79,8 +87,12 @@ string highlight_syntax(const string &input) {
 		else if ((word.size() > 1 && word[0] == '-' && isdigit(word[1])) || isdigit(word[0]))
 			res += themed(word, "numbers");
 		else if (word[0] == '"' || word[0] == '\'') res += themed(word, "strings");
-		else if (fs::exists(expand_tilde(word))) res += themed(word, "paths");
-		else res += word; // subcommands
+		else {
+			error_code ec;
+			bool exists = fs::exists(expand_tilde(word), ec);
+			if (!ec && exists) res += themed(word, "paths");
+			else res += word;
+		}
 	}
 	return res;
 }
@@ -111,31 +123,23 @@ void redraw_prompt(const string & duration_note) {
 
 void redraw_line(const string & buffer, size_t cursor, size_t & last_cursor_row) {
 	size_t width = get_terminal_width();
-	const size_t prefix_len = 2; // "% " — plain visible length
+	const size_t prefix_len = 2; // "% " plain visible length
 	size_t total_chars = prefix_len + buffer.size();
 	size_t total_rows = (total_chars - 1) / width + 1;
 	size_t cursor_total = prefix_len + cursor;
-
 	if (last_cursor_row > 0) cout << "\033[" << last_cursor_row << "A";
 	cout << "\r\033[J" << themed("% ", "prompt") << highlight_syntax(buffer);
-
 	size_t cursor_row, cursor_col;
 	if (cursor == buffer.size() && cursor_total % width == 0) {
-		// Cursor sits exactly at the last column, nothing printed past it —
-		// terminal is in "pending wrap" state, hasn't actually advanced to
-		// the next row yet. Stay on the current row rather than assume an
-		// early wrap that hasn't physically happened.
 		cursor_row = cursor_total / width - 1;
 		cursor_col = width;
 	} else {
 		cursor_row = cursor_total / width;
 		cursor_col = cursor_total % width + 1;
 	}
-
 	size_t end_row = total_rows - 1;
 	if (end_row > cursor_row) cout << "\033[" << (end_row - cursor_row) << "A";
 	cout << "\033[" << cursor_col << "G";
-
 	last_cursor_row = cursor_row;
 	cout << flush;
 }
@@ -406,7 +410,10 @@ int main(int argc, char * argv[]) {
 		history.add(input);
 		if (input == "exit") break;
 		auto start = chrono::steady_clock::now();
-		execute_line(input);
+		try { execute_line(input); }
+		catch (const std::exception & e) {
+			cerr << themed(string("crish: internal error, ") + e.what(), "failure") << endl;
+		}
 		auto end = chrono::steady_clock::now();
 		auto secs = chrono::duration_cast<chrono::seconds>(end - start).count();
 		duration_note = (secs >= 1) ? format_duration(secs) : "";
