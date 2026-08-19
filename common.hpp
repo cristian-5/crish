@@ -10,6 +10,7 @@
 #include <unistd.h>
 #include <pwd.h>
 #include <sys/stat.h>
+#include <sys/ioctl.h>
 #include <sys/utsname.h>
 
 using std::string;
@@ -18,6 +19,13 @@ namespace fs = std::filesystem;
 
 void ring_bell() {
 	std::cout << '\a' << std::flush;
+}
+
+size_t get_terminal_width() {
+	struct winsize ws;
+	if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == 0 && ws.ws_col > 0)
+		return ws.ws_col;
+	return 80; // fallback if the ioctl fails
 }
 
 string itoa(int64_t value) {

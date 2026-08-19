@@ -109,11 +109,34 @@ void redraw_prompt(const string & duration_note) {
 	cout << endl;
 }
 
-void redraw_line(const string & buffer, size_t cursor) {
-	// \r moves cursor to column 0; \033[K clears the line from cursor onwards
-	cout << "\r\033[K" << themed("% ", "prompt") << highlight_syntax(buffer);
-	size_t back = buffer.size() - cursor;
-	if (back > 0) cout << "\033[" << back << "D"; // move cursor left `back` columns
+void redraw_line(const string & buffer, size_t cursor, size_t & last_cursor_row) {
+	size_t width = get_terminal_width();
+	const size_t prefix_len = 2; // "% " — plain visible length
+	size_t total_chars = prefix_len + buffer.size();
+	size_t total_rows = (total_chars - 1) / width + 1;
+	size_t cursor_total = prefix_len + cursor;
+
+	if (last_cursor_row > 0) cout << "\033[" << last_cursor_row << "A";
+	cout << "\r\033[J" << themed("% ", "prompt") << highlight_syntax(buffer);
+
+	size_t cursor_row, cursor_col;
+	if (cursor == buffer.size() && cursor_total % width == 0) {
+		// Cursor sits exactly at the last column, nothing printed past it —
+		// terminal is in "pending wrap" state, hasn't actually advanced to
+		// the next row yet. Stay on the current row rather than assume an
+		// early wrap that hasn't physically happened.
+		cursor_row = cursor_total / width - 1;
+		cursor_col = width;
+	} else {
+		cursor_row = cursor_total / width;
+		cursor_col = cursor_total % width + 1;
+	}
+
+	size_t end_row = total_rows - 1;
+	if (end_row > cursor_row) cout << "\033[" << (end_row - cursor_row) << "A";
+	cout << "\033[" << cursor_col << "G";
+
+	last_cursor_row = cursor_row;
 	cout << flush;
 }
 
@@ -121,16 +144,17 @@ string read_input_raw(const string & duration_note, History & history) {
 	enable_raw_mode();
 	string buffer;
 	size_t cursor = 0;
+	size_t last_cursor_row = 0;
 	char c;
 	history.reset();
 	redraw_prompt(duration_note);
-	redraw_line(buffer, cursor);
+	redraw_line(buffer, cursor, last_cursor_row);
 	ssize_t n;
 	while ((n = read(STDIN_FILENO, &c, 1)) == 1) {
 		if (c == '\n') {
 			cout << "\n";
 			break;
-		} else if (c == 127 || c == 8) { // backspace or DEL
+		} else if (c == 127 || c == 8) {
 			if (cursor > 0) {
 				buffer.erase(buffer.begin() + cursor - 1);
 				cursor--;
@@ -145,8 +169,6 @@ string read_input_raw(const string & duration_note, History & history) {
 			else if (seq1 == 'C') { if (cursor < buffer.size()) cursor++; }
 			else if (seq1 == 'D') { if (cursor > 0) cursor--; }
 			else if (isdigit(seq1)) {
-				// Extended sequence: ESC [ <digits> [;<digits>] ~ — drain fully so no
-				// stray byte (e.g. the trailing '~') leaks into the buffer as text.
 				string code(1, seq1);
 				bool code_done = false;
 				char next;
@@ -156,7 +178,7 @@ string read_input_raw(const string & duration_note, History & history) {
 					if (isdigit(next)) { if (!code_done) code += next; continue; }
 					break; // unexpected byte — bail defensively
 				}
-				if (code == "3" && cursor < buffer.size()) // Delete key: forward-delete
+				if (code == "3" && cursor < buffer.size()) // delete key: forward-delete
 					buffer.erase(buffer.begin() + cursor);
 				// other codes (Home/End/PageUp/PageDown, etc.) intentionally no-ops for now
 			}
@@ -168,7 +190,7 @@ string read_input_raw(const string & duration_note, History & history) {
 			cursor++;
 			history.reset();
 		}
-		redraw_line(buffer, cursor);
+		redraw_line(buffer, cursor, last_cursor_row);
 	}
 	disable_raw_mode();
 	if (n <= 0) {
