@@ -87,6 +87,20 @@ string themed(const string & text, const string & key) {
 	return themed(text, THEME[key]);
 }
 
+string themed(const string & text, const vector<string> & keys) {
+	theme_t merged;
+	for (const auto & key : keys)
+		if (THEME.find(key) != THEME.end()) {
+			const theme_t & t = THEME[key];
+			if (t.fg.hex != -1) merged.fg = t.fg;
+			if (t.bg.hex != -1) merged.bg = t.bg;
+			merged.bold |= t.bold;
+			merged.italic |= t.italic;
+			merged.underline |= t.underline;
+		}
+	return themed(text, merged);
+}
+
 template <> color_t json::Value::as<color_t>() const {
 	if (type == json::Value::Type::Number) return color_t((uint32_t)n);
 	if (type == json::Value::Type::String) {
