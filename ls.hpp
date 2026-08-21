@@ -79,7 +79,7 @@ static string get_permissions_string(const fs::directory_entry& e) {
 	return p;
 }
 
-static string permissions_string_themed(const string & perms) {
+static string permissions_themed(const string & perms) {
 	string res;
 	for (size_t i = 0; i < perms.size(); ++i) { // always skip file type
 		switch (perms[i]) {
@@ -95,22 +95,34 @@ static string permissions_string_themed(const string & perms) {
 
 /// Formats size into max 3 digits + unit (e.g. 12B, 1.5K, 344MB, 4.2GB).
 static string format_size(uintmax_t bytes) {
-	if (bytes == 0) return "-";
-	if (bytes < 1024) return std::to_string(bytes) + "B";
-	static const char * units[] = {"KB", "MB", "GB", "TB"};
-	double val = static_cast<double>(bytes) / 1024.0;
-	size_t unit_idx = 0;
-	while (val >= 1000.0 && unit_idx < 3) {
-		val /= 1024.0;
-		unit_idx++;
-	}
-	std::ostringstream oss;
-	if (val < 10.0) oss << std::fixed << std::setprecision(1) << val; // e.g. 1.5K
-	else oss << static_cast<int>(val); // e.g. 344MB
-	oss << units[unit_idx];
-	return oss.str();
+    string num_str, unit_str;
+    bool is_zero = (bytes == 0);
+    if (is_zero) {
+        num_str = "-";
+        unit_str = "";
+    } else if (bytes < 1024) {
+        num_str = std::to_string(bytes);
+        unit_str = "B";
+    } else {
+        static const char * units[] = {"KB", "MB", "GB", "TB"};
+        double val = static_cast<double>(bytes) / 1024.0;
+        size_t unit_idx = 0;
+        while (val >= 1000.0 && unit_idx < 3) {
+            val /= 1024.0;
+            unit_idx++;
+        }
+        std::ostringstream oss;
+        if (val < 10.0) oss << std::fixed << std::setprecision(1) << val; // e.g. 1.5
+        else oss << static_cast<int>(val);                                // e.g. 344
+        num_str = oss.str();
+        unit_str = units[unit_idx];
+    }
+    size_t visible_len = num_str.length() + unit_str.length();
+    size_t target_width = 5;
+    string padding = (target_width > visible_len) ? string(target_width - visible_len, ' ') : "";
+    if (is_zero) return padding + themed("-", "permissions-n");
+    return padding + num_str + themed(unit_str, "size-units");
 }
-
 /// Formats modification time to YYYY-MM-DD HH:MM.
 static string format_mod_time(const fs::directory_entry& e) {
 	error_code ec;
@@ -136,7 +148,7 @@ static void print_entry(const fs::directory_entry & e, const string & dir_theme,
 	if (long_format) {
 		error_code ec;
 		uintmax_t sz = e.is_regular_file(ec) ? e.file_size(ec) : 0;
-		string perms = permissions_string_themed(get_permissions_string(e));
+		string perms = permissions_themed(get_permissions_string(e));
 		string size_str = format_size(sz);
 		string time_str = format_mod_time(e);
 		cout << perms << " " 
