@@ -5,6 +5,7 @@
 #include <sstream>
 #include <filesystem>
 #include <termios.h>
+#include <csignal>
 #include <thread>
 #include <fcntl.h>
 #include <cstdlib>
@@ -310,6 +311,9 @@ void execute_pipeline(const vector<Token> & tokens) {
 		if (background) {
 			pid_t pid = fork();
 			if (pid == 0) {
+				// tell the system to exit subprocesses on ^C:
+				signal(SIGINT, SIG_DFL);
+    			signal(SIGQUIT, SIG_DFL);
 				handle_builtin(cmds[0].args);
 				exit(EXIT_SUCCESS);
 			}
@@ -325,6 +329,9 @@ void execute_pipeline(const vector<Token> & tokens) {
 	for (int i = 0; i < num_cmds; i++) {
 		pid_t pid = fork();
 		if (pid == 0) {
+			// tell the system to exit subprocesses on ^C:
+			signal(SIGINT, SIG_DFL);
+			signal(SIGQUIT, SIG_DFL);
 			if (i > 0) dup2(pipefds[(i - 1) * 2], STDIN_FILENO); // read from previous pipe
 			if (i < num_cmds - 1) dup2(pipefds[i * 2 + 1], STDOUT_FILENO); // write to next pipe
 			for (int j = 0; j < 2 * num_pipes; j++) close(pipefds[j]);
@@ -377,6 +384,7 @@ void execute_line(const string & input) {
 }
 
 int main(int argc, char * argv[]) {
+	signal(SIGINT, SIG_IGN); // tell the system we must never die from ^C
 	load_settings(expand_tilde("~/crish.json")); // loads "path" and "theme"
 	if (argc > 1) {
 		if (string(argv[1]) == "-c" && argc > 2) {

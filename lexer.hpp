@@ -50,7 +50,8 @@ vector<Token> tokenize(const string & input) {
 		} else if (input.substr(i, 2) == "<<" || input.substr(i, 2) == ">>") {
 			tokens.push_back({input.substr(i, 2), false});
 			i += 2;
-		} else if (input[i] == '|' || input[i] == '&' || input[i] == ';') {
+		} else if (input[i] == '|' || input[i] == '&' || input[i] == ';' ||
+				   input[i] == '<' || input[i] == '>') {
 			tokens.push_back({string(1, input[i]), false});
 			i++;
 		} else {
@@ -65,6 +66,7 @@ vector<Token> tokenize(const string & input) {
 				if (isspace(input[i]) || isboundary(input[i])) break;
 				word += input[i++];
 			}
+			if (word.empty()) { word += input[i++]; }
 			tokens.push_back({word, false});
 		}
 	}
