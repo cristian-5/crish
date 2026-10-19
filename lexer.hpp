@@ -29,9 +29,9 @@ vector<Token> tokenize(const string & input) {
 	vector<Token> tokens;
 	size_t i = 0;
 	while (i < input.size()) {
-		if (isspace(input[i])) {
+		if (isspace((unsigned char) input[i])) {
 			string sp;
-			while (i < input.size() && isspace(input[i]))
+			while (i < input.size() && isspace((unsigned char) input[i]))
 				sp += input[i++];
 			tokens.push_back({sp, true});
 		}
@@ -63,7 +63,7 @@ vector<Token> tokenize(const string & input) {
 					i += 2;
 					continue; // skip the terminator check below for this pair
 				}
-				if (isspace(input[i]) || isboundary(input[i])) break;
+				if (isspace((unsigned char) input[i]) || isboundary(input[i])) break;
 				word += input[i++];
 			}
 			if (word.empty()) { word += input[i++]; }

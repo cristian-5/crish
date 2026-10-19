@@ -84,9 +84,9 @@ string highlight_syntax(const string &input) {
 			else res += themed(word, "failure"); // red if command doesn't exist
 			expect_cmd = false;
 		}
-		else if (word.size() > 1 && word[0] == '-' && (isalpha(word[1]) || word[1] == '-'))
+		else if (word.size() > 1 && word[0] == '-' && (isalpha((unsigned char) word[1]) || word[1] == '-'))
 			res += themed(word, "arguments");
-		else if ((word.size() > 1 && word[0] == '-' && isdigit(word[1])) || isdigit(word[0]))
+		else if ((word.size() > 1 && word[0] == '-' && isdigit((unsigned char) word[1])) || isdigit((unsigned char) word[0]))
 			res += themed(word, "numbers");
 		else if (word[0] == '"' || word[0] == '\'') res += themed(word, "strings");
 		else {
@@ -126,12 +126,14 @@ void redraw_prompt(const string & duration_note) {
 void redraw_line(const string & buffer, size_t cursor, size_t & last_cursor_row) {
 	size_t width = get_terminal_width();
 	const size_t prefix_len = 2; // "% " plain visible length
-	size_t total_chars = prefix_len + buffer.size();
+	size_t buffer_cols = utf8_len(buffer); // display columns, not byte count
+	size_t total_chars = prefix_len + buffer_cols;
 	size_t total_rows = (total_chars - 1) / width + 1;
-	size_t cursor_total = prefix_len + cursor;
+	size_t cursor_col = utf8_col(buffer, cursor); // cursor's column, not byte offset
+	size_t cursor_total = prefix_len + cursor_col;
 	if (last_cursor_row > 0) cout << "\033[" << last_cursor_row << "A";
 	cout << "\r\033[J" << themed("% ", "prompt") << highlight_syntax(buffer);
-	size_t cursor_row, cursor_col;
+	size_t cursor_row;
 	if (cursor == buffer.size() && cursor_total % width == 0) {
 		cursor_row = cursor_total / width - 1;
 		cursor_col = width;
@@ -162,8 +164,9 @@ string read_input_raw(const string & duration_note, History & history) {
 			break;
 		} else if (c == 127 || c == 8) {
 			if (cursor > 0) {
-				buffer.erase(buffer.begin() + cursor - 1);
-				cursor--;
+				size_t start = utf8_prev(buffer, cursor);
+				buffer.erase(buffer.begin() + start, buffer.begin() + cursor);
+				cursor = start;
 			}
 			history.reset();
 		} else if (c == 27) { // ESC — possible escape sequence
@@ -172,8 +175,8 @@ string read_input_raw(const string & duration_note, History & history) {
 			if (read(STDIN_FILENO, &seq1, 1) != 1) continue;
 			if      (seq1 == 'A') { history.up(buffer);   cursor = buffer.size(); }
 			else if (seq1 == 'B') { history.down(buffer); cursor = buffer.size(); }
-			else if (seq1 == 'C') { if (cursor < buffer.size()) cursor++; }
-			else if (seq1 == 'D') { if (cursor > 0) cursor--; }
+			else if (seq1 == 'C') { if (cursor < buffer.size()) cursor = utf8_next(buffer, cursor); }
+			else if (seq1 == 'D') { if (cursor > 0) cursor = utf8_prev(buffer, cursor); }
 			else if (isdigit(seq1)) {
 				string code(1, seq1);
 				bool code_done = false;
@@ -184,14 +187,16 @@ string read_input_raw(const string & duration_note, History & history) {
 					if (isdigit(next)) { if (!code_done) code += next; continue; }
 					break; // unexpected byte — bail defensively
 				}
-				if (code == "3" && cursor < buffer.size()) // delete key: forward-delete
-					buffer.erase(buffer.begin() + cursor);
+				if (code == "3" && cursor < buffer.size()) { // delete key: forward-delete
+					size_t end = utf8_next(buffer, cursor);
+					buffer.erase(buffer.begin() + cursor, buffer.begin() + end);
+				}
 				// other codes (Home/End/PageUp/PageDown, etc.) intentionally no-ops for now
 			}
 		} else if (c == '\t') {
 			handle_tab_completion(buffer);
 			cursor = buffer.size();
-		} else if (c >= 32 && c <= 126) {
+		} else if ((unsigned char) c >= 32) { // any non-control byte, incl. UTF-8 bytes >= 0x80
 			buffer.insert(buffer.begin() + cursor, c);
 			cursor++;
 			history.reset();

@@ -145,6 +145,36 @@ bool has_hidden_flag(const fs::path & p) {
 #endif
 }
 
+inline bool is_utf8_continuation(unsigned char c) { return (c & 0xC0) == 0x80; }
+
+/// Byte offset of the start of the codepoint immediately before `pos`.
+size_t utf8_prev(const string & s, size_t pos) {
+	if (pos == 0) return 0;
+	pos--;
+	while (pos > 0 && is_utf8_continuation((unsigned char) s[pos])) pos--;
+	return pos;
+}
+
+/// Byte offset of the start of the codepoint immediately after `pos`.
+size_t utf8_next(const string & s, size_t pos) {
+	if (pos >= s.size()) return s.size();
+	pos++;
+	while (pos < s.size() && is_utf8_continuation((unsigned char) s[pos])) pos++;
+	return pos;
+}
+
+// Number of codepoints (display columns, assuming non-wide chars) in s.
+size_t utf8_len(const string & s) {
+	size_t count = 0;
+	for (unsigned char c : s) if (!is_utf8_continuation(c)) count++;
+	return count;
+}
+
+// Column position (in codepoints) corresponding to byte offset `byte_pos`.
+size_t utf8_col(const string & s, size_t byte_pos) {
+	return utf8_len(s.substr(0, byte_pos));
+}
+
 void replace(std::string& str, const std::string& from, const std::string& to) {
     size_t pos = str.find(from);
     if (pos != std::string::npos) str.replace(pos, from.length(), to);

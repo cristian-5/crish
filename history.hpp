@@ -17,6 +17,8 @@ using std::string;
 using std::cout;
 using std::ifstream;
 
+const size_t MAX_HISTORY_ENTRIES = 512; // max number of entries to keep in memory
+
 class History {
 public:
 
@@ -36,6 +38,11 @@ public:
 		if (!entries.empty() && entries.back() == entry) return; // skip consecutive dupes
 		entries.push_back(entry);
 		append_to_file(entry);
+		if (entries.size() > MAX_HISTORY_ENTRIES) {
+			size_t excess = entries.size() - MAX_HISTORY_ENTRIES;
+			entries.erase(entries.begin(), entries.begin() + excess);
+			trim_file_to_last(MAX_HISTORY_ENTRIES);
+		}
 	}
 
 	void reset() {
@@ -88,6 +95,32 @@ private:
 			write(fd, line.c_str(), line.size());
 			flock(fd, LOCK_UN);
 		}
+		close(fd);
+	}
+
+	void trim_file_to_last(size_t keep) {
+		if (file_path.empty()) return;
+		int fd = open(file_path.c_str(), O_RDWR | O_CREAT, 0600);
+		if (fd == -1) return;
+		if (flock(fd, LOCK_EX) != 0) { close(fd); return; }
+		// read everything under the lock
+		vector<string> lines;
+		{
+			ifstream in(file_path);
+			string line;
+			while (getline(in, line))
+				if (!line.empty()) lines.push_back(line);
+		}
+		if (lines.size() > keep)
+			lines.erase(lines.begin(), lines.end() - keep);
+		// rewrite in place through the locked fd
+		if (ftruncate(fd, 0) == 0) {
+			lseek(fd, 0, SEEK_SET);
+			string out;
+			for (const auto & l : lines) out += l + "\n";
+			write(fd, out.c_str(), out.size());
+		}
+		flock(fd, LOCK_UN);
 		close(fd);
 	}
 
