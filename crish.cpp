@@ -46,7 +46,7 @@ bool is_executable_in_path(const string & cmd) {
 	return false;
 }
 
-string BUILTIN[] = { "cd", "la", "ls", "sleep", "clean", "clear" };
+string BUILTIN[] = { "cd", "la", "ls", "sleep", "clean", "clear", "set", "get" };
 const size_t N_BUILTINS = sizeof(BUILTIN) / sizeof(BUILTIN[0]);
 
 bool is_builtin(const vector<string> & args) {
@@ -242,6 +242,28 @@ bool handle_builtin(const vector<string> & args) {
 		bool show_hidden = (args[0] == "la");
 		string target = args.size() > 1 ? expand_tilde(args[1]) : ".";
 		list_directory(target, show_hidden);
+		return true;
+	} else if (args[0] == "set") {
+		// `set NAME VALUE` or `set NAME=VALUE`
+		string name, value;
+		if (args.size() == 2 && args[1].find('=') != string::npos) {
+			size_t eq = args[1].find('=');
+			name = args[1].substr(0, eq);
+			value = args[1].substr(eq + 1);
+		} else if (args.size() == 3) {
+			name = args[1];
+			value = args[2];
+		} else {
+			cerr << themed("usage: set NAME VALUE  (quote values containing spaces)", "failure") << endl;
+			return true;
+		}
+		if (!is_valid_var_name(name)) cerr << themed("set: invalid variable name \"" + name + "\"", "failure") << endl;
+		else if (setenv(name.c_str(), value.c_str(), 1) != 0) perror("set failed");
+		return true;
+	} else if (args[0] == "get") {
+		if (args.size() != 2) cerr << themed("usage: get NAME", "failure") << endl;
+		else if (const char * value = getenv(args[1].c_str())) cout << value << endl;
+		else cerr << themed("get: " + args[1] + " is not set", "failure") << endl;
 		return true;
 	}
 	return false;

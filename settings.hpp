@@ -109,6 +109,29 @@ void load_settings(const string & filename) {
 		}
 		if (!joined.empty()) setenv("PATH", joined.c_str(), 1);
 	}
+	// load "variables" if available (exported to every command we launch):
+	Value * variables = (* settings)["variables"];
+	if (variables && variables -> type == Value::Type::Object)
+		for (const auto & [name, object] : *(variables -> o)) {
+			if (!is_valid_var_name(name)) {
+				cerr << themed("invalid variable name \"" + name + "\" in settings", "failure") << endl;
+				continue;
+			}
+			string value;
+			if (!object) continue;
+			switch (object -> type) {
+				case Value::Type::String: value = object -> as<string>(); break;
+				case Value::Type::Number: value = JSON::stringify(object); break; // 1 -> "1"
+				case Value::Type::Bool:
+					if (object -> b) { value = "1"; break; } // true  -> "1"
+					unsetenv(name.c_str()); // false -> unset
+				continue;
+				default:
+					cerr << themed("variable \"" + name + "\" must be a string, number or boolean", "failure") << endl;
+				continue;
+			}
+			setenv(name.c_str(), value.c_str(), 1);
+		}
 	// load "theme" if available:
 	Value * theme = (* settings)["theme"];
 	if (theme && theme -> type == Value::Type::Object)

@@ -175,6 +175,14 @@ size_t utf8_col(const string & s, size_t byte_pos) {
 	return utf8_len(s.substr(0, byte_pos));
 }
 
+/// Valid environment variable name: [A-Za-z_][A-Za-z0-9_]*
+bool is_valid_var_name(const string & name) {
+	if (name.empty() || !(isalpha((unsigned char) name[0]) || name[0] == '_')) return false;
+	for (char c : name)
+		if (!(isalnum((unsigned char) c) || c == '_')) return false;
+	return true;
+}
+
 void replace(std::string& str, const std::string& from, const std::string& to) {
     size_t pos = str.find(from);
     if (pos != std::string::npos) str.replace(pos, from.length(), to);

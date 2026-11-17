@@ -16,6 +16,8 @@ It supports:
 - History persistence into `~/.crish_history`
 - Path editing via `~/.crish.json` configuration file
 - Custom prompt via `~/.crish.json` configuration file
+- Environment variables via the `set` / `get`
+- JSON `"variables"` configuration section
 
 ### Compilation
 
@@ -35,6 +37,15 @@ chsh -s /path/to/crish
 If on startup you see the `Last login: ... on ttys003` message,
 you can silence it by running `touch ~/.hushlogin`.
 
+### Environment variables
+
+```sh
+set HOMEBREW_NO_AUTO_UPDATE 1 # or: set HOMEBREW_NO_AUTO_UPDATE=1
+get HOMEBREW_NO_AUTO_UPDATE   # prints 1
+```
+
+Quote values containing spaces: `set GREETING "hello world"`.
+
 ## Configuration
 
 Create a `crish.json` file in your home directory (it can also be marked hidden).
@@ -50,7 +61,7 @@ Create a `crish.json` file in your home directory (it can also be marked hidden)
 		"strings": { "fg": "#0aad98" },
 		"numbers": { "fg": "#00ffff" },
 		"arguments": { "fg": "#ffff00" },
-		"paths": { "fg": "#c966c9" },
+		"paths": { "fg": "#d542d5" },
 		"files": { "fg": "#fff" },
 		"folders": { "fg": "#fff", "bg": "#0085db" },
 		"hidden-files": { "fg": "#999" },
@@ -78,6 +89,10 @@ Create a `crish.json` file in your home directory (it can also be marked hidden)
 		"/sbin",
 		"/usr/bin",
 		"/usr/sbin"
-	]
+	],
+	"variables": {
+		"EDITOR": "vim",
+		"ENABLE_AUTOBOTTLE": false
+	}
 }
 ```
