@@ -30,6 +30,8 @@
 	</data>
 	<key>BackgroundSettingsForInactiveWindows</key>
 	<false/>
+	<key>Bell</key>
+	<false/>
 	<key>BookmarkRestorations</key>
 	<true/>
 	<key>ConvertNewlinesOnPaste</key>
@@ -181,6 +183,6 @@
 	<key>type</key>
 	<string>Window Settings</string>
 	<key>useOptionAsMetaKey</key>
-	<false/>
+	<integer>0</integer>
 </dict>
 </plist>
